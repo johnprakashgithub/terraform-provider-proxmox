@@ -1050,10 +1050,23 @@ func resourceVmQemuCreate(ctx context.Context, d *schema.ResourceData, meta inte
 			if err != nil {
 				return diag.FromErr(err)
 			}
-			// give sometime to proxmox to catchup
-			time.Sleep(time.Duration(d.Get("clone_wait").(int)) * time.Second)
+			// waiting for clone to become ready
+			log.Print("[DEBUG] Waiting for clone becoming ready")
+			var config_post_clone *pxapi.ConfigQemu
+			for {
+				// Wait until we can actually retrieve the config from the cloned machine
+				config_post_clone, err = pxapi.NewConfigQemuFromApi(vmr, client)
+				if config_post_clone != nil {
+					break
+					// to prevent an infinite loop we check for any other error
+					// this error is actually fine because the clone is not ready yet
+				} else if err.Error() != "vm locked, could not obtain config" {
+					return err
+				}
+				time.Sleep(5 * time.Second)
+				log.Print("[DEBUG] Clone still not ready, checking again")
+			}
 
-			config_post_clone, err := pxapi.NewConfigQemuFromApi(vmr, client)
 			if err != nil {
 				return diag.FromErr(err)
 			}
